@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "sample-tools": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "C:\\Users\\FahimAlSami\\Documents\\llm_r\\agents_projects\\mcp\\base",
+        "run",
+        "server.py"
+      ]
+    }
+  }
+}
