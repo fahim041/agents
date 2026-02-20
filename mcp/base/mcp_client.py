@@ -1,8 +1,3 @@
-"""
-OpenAI Agent SDK Example with MCP Server Integration
-This script demonstrates how to connect to an MCP server and use its tools with the OpenAI Agent SDK
-"""
-
 import asyncio
 from dotenv import load_dotenv
 from agents import Agent, Runner

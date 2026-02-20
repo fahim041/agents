@@ -1,14 +1,8 @@
-"""
-Test script for the MCP server
-This script demonstrates how to interact with the MCP server programmatically
-"""
-
 import asyncio
 import json
 import sys
 from pathlib import Path
 
-# Add parent directory to path to import the server
 sys.path.insert(0, str(Path(__file__).parent))
 
 

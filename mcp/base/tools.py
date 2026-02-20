@@ -1,10 +1,4 @@
-"""
-OpenAI Agent SDK Tools Module
-This module contains utility tools for the OpenAI Agent SDK
-"""
-
 from agents import function_tool
-from openai import OpenAI
 from agents import Agent, Runner, trace
 import asyncio
 

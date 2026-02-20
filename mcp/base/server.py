@@ -1,6 +1,5 @@
 from mcp.server.fastmcp import FastMCP
 
-# Initialize FastMCP server
 mcp = FastMCP("sample-tools-server")
 
 
@@ -99,7 +98,6 @@ async def temperature_converter(value: float, from_unit: str, to_unit: str) -> s
 
 def main():
     """Run the MCP server with stdio transport."""
-    # The FastMCP server automatically handles initialization and runs on stdio
     mcp.run(transport="stdio")
 
 
