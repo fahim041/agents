@@ -1,61 +1,11 @@
 import asyncio
 from dotenv import load_dotenv
-from agents import Agent, Runner
-from agents.tool import function_tool
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from agents import Agent, Runner, trace
+from agents.mcp import MCPServerStdio
 from openai.types.responses import ResponseTextDeltaEvent
 
 # Load environment variables (OpenAI API key)
 load_dotenv(override=True)
-
-
-async def create_mcp_tool_wrappers(session, mcp_tools):
-    """Create OpenAI Agent SDK compatible tool wrappers for MCP tools."""
-    tool_wrappers = []
-
-    for tool in mcp_tools:
-        if tool.name == "calculator":
-            @function_tool
-            async def calculator_wrapper(operation: str, a: float, b: float) -> str:
-                """Calculator tool from MCP server."""
-                print(f"[MCP Tool] calculator({operation}, {a}, {b})")
-                result = await session.call_tool("calculator", {"operation": operation, "a": a, "b": b})
-                response = result.content[0].text if result.content else "No result"
-                print(f"[MCP Result] {response}")
-                return response
-
-            tool_wrappers.append(calculator_wrapper)
-
-        elif tool.name == "text_analyzer":
-            @function_tool
-            async def text_analyzer_wrapper(text: str) -> str:
-                """Text analyzer tool from MCP server."""
-                print(f"[MCP Tool] text_analyzer('{text[:30]}...')")
-                result = await session.call_tool("text_analyzer", {"text": text})
-                response = result.content[0].text if result.content else "No result"
-                print(f"[MCP Result] {response[:50]}...")
-                return response
-
-            tool_wrappers.append(text_analyzer_wrapper)
-
-        elif tool.name == "temperature_converter":
-            @function_tool
-            async def temperature_converter_wrapper(value: float, from_unit: str, to_unit: str) -> str:
-                """Temperature converter tool from MCP server."""
-                print(f"[MCP Tool] temperature_converter({value}, {from_unit}, {to_unit})")
-                result = await session.call_tool("temperature_converter", {
-                    "value": value,
-                    "from_unit": from_unit,
-                    "to_unit": to_unit
-                })
-                response = result.content[0].text if result.content else "No result"
-                print(f"[MCP Result] {response}")
-                return response
-
-            tool_wrappers.append(temperature_converter_wrapper)
-
-    return tool_wrappers
 
 
 async def main():
@@ -66,69 +16,81 @@ async def main():
     print("=" * 70)
     print()
 
-    # Connect to MCP server and keep session alive
-    server_params = StdioServerParameters(
-        command="python",
-        args=["server.py"],
-        env=None
-    )
+    async with MCPServerStdio(
+        params={"command": "python", "args": ["server.py"]}
+    ) as mcp_server:
 
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            # Initialize the session
-            await session.initialize()
+        agent = Agent(
+            name="MCP Tools Agent",
+            instructions="""You are a helpful assistant with access to various utility tools:
+            - Calculator for arithmetic operations (add, subtract, multiply, divide)
+            - Text analyzer for analyzing text content
+            - Temperature converter for converting between temperature units
 
-            # List available tools
-            tools_response = await session.list_tools()
-            print(f"Connected! Found {len(tools_response.tools)} tools:")
-            for tool in tools_response.tools:
-                print(f"  - {tool.name}: {tool.description[:50]}...")
-            print()
+            Use these tools to help answer user questions accurately and concisely.""",
+            mcp_servers=[mcp_server],
+            model="gpt-4o-mini"
+        )
 
-            # Create tool wrappers that use the active session
-            tools = await create_mcp_tool_wrappers(session, tools_response.tools)
-            print(f"[OK] Created {len(tools)} tool wrappers")
-            for i, tool in enumerate(tools):
-                print(f"  - Tool {i+1}: {type(tool).__name__}")
-            print()
+        # Test 1: Calculator
+        print("Test 1: Calculator")
+        print("-" * 60)
+        with trace("Calculator Test"):
+            result = await Runner.run(agent, "What is 125 multiplied by 48?")
+            print(result.final_output)
+        print()
 
-            # Create the agent with the tools
-            agent = Agent(
-                name="MCP Tools Agent",
-                instructions="""You are a helpful assistant with access to various utility tools:
-                - Calculator for arithmetic operations (add, subtract, multiply, divide)
-                - Text analyzer for analyzing text content
-                - Temperature converter for converting between temperature units
-                
-                Use these tools to help answer user questions accurately and concisely.""",
-                tools=tools,
-                model="gpt-4o-mini"
+        # Test 2: Text Analyzer
+        print("Test 2: Text Analyzer")
+        print("-" * 60)
+        with trace("Text Analyzer Test"):
+            result = await Runner.run(
+                agent,
+                "Analyze this text: 'The Model Context Protocol makes AI integrations easy and standardized!'"
             )
-            
-            print(f"[Agent] Created with {len(tools)} tools registered")
-    
-    # Test 1: Calculator
-    print("Test 1: Calculator")
-    print("-" * 60)
-    result = await Runner.run(agent, "What is 125 multiplied by 48?")
-    print(f"Answer: {result.final_output_as(str)}")
-    print()
-    
-    # Test 2: Text Analyzer
-    print("Test 2: Text Analyzer")
-    print("-" * 60)
-    result = await Runner.run(
-        agent, 
-        "Analyze this text: 'The Model Context Protocol makes AI integrations easy and standardized!'"
-    )
-    print(f"Answer: {result.final_output_as(str)}")
-    print()
-    
-    # Test 3: Temperature Converter
-    print("Test 3: Temperature Converter")
-    print("-" * 60)
-    result = await Runner.run(agent, "Convert 100 degrees Fahrenheit to Celsius")
-    print(f"Answer: {result.final_output_as(str)}")
+            print(result.final_output)
+        print()
+
+        # Test 3: Temperature Converter
+        print("Test 3: Temperature Converter")
+        print("-" * 60)
+        with trace("Temperature Converter Test"):
+            result = await Runner.run(agent, "Convert 100 degrees Fahrenheit to Celsius")
+            print(result.final_output)
+        print()
+
+        # Test 4: Multi-tool query
+        print("Test 4: Multi-Tool Query")
+        print("-" * 60)
+        with trace("Multi-Tool Test"):
+            result = await Runner.run(
+                agent,
+                """I need your help with three things:
+                1. Calculate 456 divided by 12
+                2. Convert 25 Celsius to Fahrenheit
+                3. Analyze this sentence: 'Python is amazing!'
+                """
+            )
+            print(result.final_output)
+        print()
+
+        # Test 5: Streaming response
+        print("Test 5: Streaming Response")
+        print("-" * 60)
+        print("Streaming answer: ", end="", flush=True)
+        res = Runner.run_streamed(
+            agent,
+            "Calculate the sum of 789 and 456, then tell me what that number is in words."
+        )
+        async for event in res.stream_events():
+            if event.type == 'raw_response_event' and isinstance(event.data, ResponseTextDeltaEvent):
+                print(event.data.delta, end='', flush=True)
+        print()
+        print()
+
+    print("=" * 70)
+    print("All tests completed!")
+    print("=" * 70)
 
 
 if __name__ == "__main__":
